@@ -1,0 +1,817 @@
+// ============================================================================
+// FLEXIBLE CREATOR SUBSCRIPTIONS
+// ============================================================================
+
+model CreatorSubscriptionSettings {
+  id              String   @id @default(uuid())
+  hostId          String   @unique
+
+  // Custom pricing (min/max enforced at API level)
+  basicPrice      Float?   @default(500)    // Min: ₦300, Max: ₦10,000
+  premiumPrice    Float?   @default(1000)   // Min: ₦800, Max: ₦10,000
+  vipPrice        Float?   @default(2000)   // Min: ₦1,500, Max: ₦10,000
+
+  // Custom benefits
+  basicBenefits   Json?    // Array of benefits
+  premiumBenefits Json?
+  vipBenefits     Json?
+
+  // Settings
+  isEnabled       Boolean  @default(false)
+  requiresApproval Boolean @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([hostId])
+}
+
+// ============================================================================
+// GAMING & BATTLES SYSTEM
+// ============================================================================
+
+enum BattleType {
+  PK_BATTLE           // 1v1 player vs player
+  TEAM_BATTLE         // Team vs team
+  GIFT_WAR            // Highest gifts wins
+  TALENT_SHOWDOWN     // Judged by viewers
+}
+
+enum BattleStatus {
+  PENDING
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum InviteType {
+  PRIVATE           // Invite specific user
+  FOLLOWERS         // Challenge any follower
+  OPEN              // Anyone can join
+}
+
+model LiveBattle {
+  id              String       @id @default(uuid())
+  streamId        String?      // Can be standalone
+
+  // Battle settings
+  battleType      BattleType
+  status          BattleStatus @default(PENDING)
+  inviteType      InviteType   @default(OPEN)
+
+  // Participants
+  host1Id         String
+  host2Id         String?
+  host1Name       String
+  host2Name       String?
+
+  // Team battles
+  team1Ids        String[]     @default([])
+  team2Ids        String[]     @default([])
+
+  // Duration
+  duration        Int          // minutes (5, 10, 15, 30)
+
+  // Real-time scores
+  host1Score      Float        @default(0)
+  host2Score      Float        @default(0)
+  host1Gifts      Int          @default(0)
+  host2Gifts      Int          @default(0)
+  host1Votes      Int          @default(0)
+  host2Votes      Int          @default(0)
+
+  // Prize pool
+  prizePool       Float        @default(0)
+  winnerId        String?
+  winnerPrize     Float?
+
+  // Viewer metrics
+  peakViewers     Int          @default(0)
+  totalViewers    Int          @default(0)
+
+  // Timestamps
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  invitations     BattleInvitation[]
+  gifts           BattleGift[]
+  votes           BattleVote[]
+
+  @@index([host1Id])
+  @@index([host2Id])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model BattleInvitation {
+  id              String   @id @default(uuid())
+  battleId        String
+  senderId        String
+  recipientId     String
+
+  status          String   @default("PENDING") // PENDING, ACCEPTED, DECLINED
+
+  message         String?
+  respondedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  battle          LiveBattle @relation(fields: [battleId], references: [id], onDelete: Cascade)
+
+  @@unique([battleId, recipientId])
+  @@index([recipientId])
+}
+
+model BattleGift {
+  id              String     @id @default(uuid())
+  battleId        String
+  senderId        String
+  recipientSide   String     // host1 or host2
+
+  giftType        String
+  amount          Float
+  quantity        Int        @default(1)
+
+  createdAt       DateTime   @default(now())
+
+  // Relations
+  battle          LiveBattle @relation(fields: [battleId], references: [id], onDelete: Cascade)
+
+  @@index([battleId])
+  @@index([senderId])
+}
+
+model BattleVote {
+  id              String     @id @default(uuid())
+  battleId        String
+  voterId         String
+  votedFor        String     // host1 or host2
+
+  createdAt       DateTime   @default(now())
+
+  // Relations
+  battle          LiveBattle @relation(fields: [battleId], references: [id], onDelete: Cascade)
+
+  @@unique([battleId, voterId])
+  @@index([battleId])
+}
+
+// ============================================================================
+// FIPLE MARKETPLACE
+// ============================================================================
+
+model MerchantAccount {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+
+  // Business information
+  businessName    String
+  businessType    String   // Individual, LLC, Corporation
+  businessEmail   String
+  businessPhone   String
+  businessAddress String?  @db.Text
+
+  // Tax info
+  taxId           String?
+  taxCertificate  String?
+
+  // Verification
+  isVerified      Boolean  @default(false)
+  verificationDocs String[] @default([])
+  verifiedAt      DateTime?
+
+  // Bank details for payouts
+  bankName        String?
+  accountNumber   String?
+  accountName     String?
+  bankCode        String?
+
+  // Policies
+  returnPolicy    String?  @db.Text
+  shippingPolicy  String?  @db.Text
+  privacyPolicy   String?  @db.Text
+
+  // Settings
+  autoAcceptOrders Boolean @default(true)
+  allowReviews     Boolean @default(true)
+
+  // Affiliate program
+  affiliateEnabled Boolean @default(false)
+  affiliateRate    Float   @default(10) // percentage
+  minAffiliateFollowers Int @default(2500)
+
+  // Metrics
+  totalProducts   Int      @default(0)
+  totalSales      Float    @default(0)
+  totalOrders     Int      @default(0)
+  completedOrders Int      @default(0)
+  rating          Float?
+  reviewsCount    Int      @default(0)
+
+  // Subscription
+  subscriptionPlan String? // Free, Basic, Pro
+  subscriptionExpiry DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  products        Product[]
+  orders          Order[]
+  affiliates      AffiliatePartnership[]
+
+  @@index([userId])
+  @@index([isVerified])
+}
+
+enum ProductCategory {
+  ELECTRONICS
+  FASHION
+  BEAUTY
+  HOME
+  FOOD
+  BOOKS
+  SPORTS
+  ARTS
+  SERVICES
+  OTHER
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  OUT_OF_STOCK
+  ARCHIVED
+}
+
+model Product {
+  id              String         @id @default(uuid())
+  merchantId      String
+
+  // Basic info
+  name            String
+  description     String         @db.Text
+  category        ProductCategory
+  subcategory     String?
+  brand           String?
+  tags            String[]       @default([])
+
+  // Pricing
+  price           Float
+  compareAtPrice  Float?         // Original price for showing discount
+  discountPercent Float?
+  currency        String         @default("NGN")
+
+  // Inventory
+  stock           Int            @default(0)
+  sku             String?
+  lowStockAlert   Int            @default(5)
+
+  // Media
+  images          String[]       @default([])
+  videoUrl        String?
+  thumbnailUrl    String?
+
+  // Specifications
+  specifications  Json?          // {key: value} pairs
+  variants        Json?          // Size, color options
+
+  // Shipping
+  weight          Float?         // kg
+  dimensions      Json?          // {length, width, height} cm
+  shipsFrom       String?        // State/city
+  shippingFee     Float?
+  freeShipping    Boolean        @default(false)
+
+  // Affiliate program
+  allowAffiliate  Boolean        @default(true)
+  affiliateRate   Float          @default(10) // percentage
+
+  // Promotion
+  isFeatured      Boolean        @default(false)
+  featuredUntil   DateTime?
+
+  // Status
+  status          ProductStatus  @default(DRAFT)
+
+  // Metrics
+  viewsCount      Int            @default(0)
+  salesCount      Int            @default(0)
+  rating          Float?
+  reviewsCount    Int            @default(0)
+
+  // SEO
+  slug            String?        @unique
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relations
+  merchant        MerchantAccount @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  reviews         ProductReview[]
+  showcases       LiveProductShowcase[]
+
+  @@index([merchantId])
+  @@index([category])
+  @@index([status])
+  @@index([isFeatured])
+  @@index([createdAt])
+}
+
+model ProductReview {
+  id              String   @id @default(uuid())
+  productId       String
+  userId          String
+  orderId         String?
+
+  rating          Int      // 1-5
+  title           String?
+  review          String?  @db.Text
+  images          String[] @default([])
+
+  // Verification
+  isVerified      Boolean  @default(false) // Verified purchase
+
+  // Helpful
+  helpfulCount    Int      @default(0)
+
+  createdAt       DateTime @default(now())
+
+  // Relations
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([userId])
+}
+
+model ShoppingCart {
+  id              String     @id @default(uuid())
+  userId          String     @unique
+
+  items           CartItem[]
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model CartItem {
+  id              String         @id @default(uuid())
+  cartId          String
+  productId       String
+  merchantId      String
+
+  quantity        Int            @default(1)
+  selectedVariant Json?          // {size: "M", color: "Red"}
+
+  // Price snapshot
+  priceSnapshot   Float
+
+  createdAt       DateTime       @default(now())
+
+  // Relations
+  cart            ShoppingCart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@index([cartId])
+  @@index([productId])
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PROCESSING
+  SHIPPED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model Order {
+  id              String       @id @default(uuid())
+  orderNumber     String       @unique
+  userId          String
+  merchantId      String
+
+  // Items (snapshot)
+  items           Json         // Array of {productId, name, price, quantity, variant}
+
+  // Pricing breakdown
+  subtotal        Float
+  discount        Float        @default(0)
+  discountCode    String?
+  shippingFee     Float
+  tax             Float        @default(0)
+  total           Float
+
+  // Shipping
+  shippingAddress Json         // Full address object
+  shippingMethod  String       // Standard, Express
+  trackingNumber  String?
+  carrier         String?
+
+  // Payment
+  paymentMethod   String       // paystack, stripe, wallet
+  paymentRef      String       @unique
+  paymentStatus   String       @default("PENDING")
+
+  // Order status
+  status          OrderStatus  @default(PENDING_PAYMENT)
+
+  // Affiliate tracking
+  affiliateId     String?      // Creator who referred
+  affiliateCode   String?
+  affiliateEarning Float?
+
+  // Dates
+  paidAt          DateTime?
+  confirmedAt     DateTime?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  refundedAt      DateTime?
+
+  // Notes
+  buyerNotes      String?      @db.Text
+  merchantNotes   String?      @db.Text
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  merchant        MerchantAccount @relation(fields: [merchantId], references: [id])
+
+  @@index([userId])
+  @@index([merchantId])
+  @@index([status])
+  @@index([affiliateId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// AFFILIATE / MARKETING SYSTEM
+// ============================================================================
+
+model AffiliatePartnership {
+  id              String   @id @default(uuid())
+  creatorId       String
+  merchantId      String
+
+  // Application
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED, SUSPENDED
+  applicationNote String?  @db.Text
+  rejectionReason String?
+
+  // Terms
+  commissionRate  Float    // Set by merchant (5-30%)
+  customTerms     String?  @db.Text
+
+  // Performance
+  totalClicks     Int      @default(0)
+  totalSales      Float    @default(0)
+  totalEarnings   Float    @default(0)
+  totalOrders     Int      @default(0)
+  pendingEarnings Float    @default(0)
+
+  // Affiliate identifiers
+  affiliateCode   String   @unique
+  affiliateLink   String
+
+  // Dates
+  appliedAt       DateTime @default(now())
+  approvedAt      DateTime?
+  suspendedAt     DateTime?
+
+  // Relations
+  merchant        MerchantAccount @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  showcases       LiveProductShowcase[]
+
+  @@unique([creatorId, merchantId])
+  @@index([creatorId])
+  @@index([merchantId])
+  @@index([status])
+}
+
+model LiveProductShowcase {
+  id              String              @id @default(uuid())
+  streamId        String
+  productId       String
+  creatorId       String
+  partnershipId   String?
+
+  // Display info
+  displayDuration Int                 @default(0) // seconds shown
+  position        String?             // top, bottom, overlay
+
+  // Tracking
+  views           Int                 @default(0)
+  clicks          Int                 @default(0)
+  sales           Int                 @default(0)
+  revenue         Float               @default(0)
+  earnings        Float               @default(0)
+
+  // Status
+  isActive        Boolean             @default(true)
+
+  createdAt       DateTime            @default(now())
+  endedAt         DateTime?
+
+  // Relations
+  product         Product             @relation(fields: [productId], references: [id])
+  partnership     AffiliatePartnership? @relation(fields: [partnershipId], references: [id])
+
+  @@index([streamId])
+  @@index([productId])
+  @@index([creatorId])
+}
+
+model DiscountCode {
+  id              String   @id @default(uuid())
+  merchantId      String
+  code            String   @unique
+
+  // Discount
+  discountType    String   // PERCENTAGE, FIXED_AMOUNT
+  discountValue   Float
+  maxDiscount     Float?   // Cap for percentage discounts
+
+  // Restrictions
+  minPurchase     Float?
+  maxUses         Int?
+  usesCount       Int      @default(0)
+  validFrom       DateTime @default(now())
+  validUntil      DateTime?
+
+  // Conditions
+  productIds      String[] @default([]) // Empty = all products
+  firstTimeOnly   Boolean  @default(false)
+
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@index([merchantId])
+  @@index([code])
+}
+
+// ============================================================================
+// CONTENT ORIGINALITY DETECTION
+// ============================================================================
+
+enum ContentType {
+  POST
+  STORY
+  REEL
+  LIVESTREAM
+}
+
+model ContentOriginality {
+  id              String      @id @default(uuid())
+  contentId       String      // Post ID or Stream ID
+  contentType     ContentType
+  userId          String
+
+  // Watermark detection
+  hasWatermark    Boolean     @default(false)
+  watermarkSource String?     // tiktok, instagram, youtube, snapchat, etc.
+  watermarkConfidence Float?  // 0-100%
+
+  // Copyright detection
+  hasCopyrighted  Boolean     @default(false)
+  copyrightSource String?
+  copyrightType   String?     // music, video, image
+
+  // Duplicate detection
+  isDuplicate     Boolean     @default(false)
+  originalId      String?
+  duplicateSource String?
+
+  // Competing platform mentions (for livestreams)
+  platformMentions String[]   @default([])
+  mentionCount    Int         @default(0)
+
+  // Overall score
+  originalityScore Float      @default(100) // 0-100
+
+  // Actions taken
+  isFlagged       Boolean     @default(false)
+  isRestricted    Boolean     @default(false)
+  restrictionType String?     // FYP_SUPPRESSED, HIDDEN, REMOVED, MUTED
+  restrictionReason String?
+
+  // Manual review
+  requiresReview  Boolean     @default(false)
+  reviewedBy      String?
+  reviewedAt      DateTime?
+
+  analyzedAt      DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([contentId, contentType])
+  @@index([userId])
+  @@index([isFlagged])
+  @@index([originalityScore])
+}
+
+model PlatformMention {
+  id              String   @id @default(uuid())
+  streamId        String
+  userId          String
+  username        String?
+
+  // Detection details
+  mentionedPlatform String // tiktok, instagram, youtube, facebook
+  mentionContext    String // What was said
+  timestamp         Int    // Seconds into stream
+  confidence        Float  // Detection confidence
+
+  // Actions
+  warningIssued   Boolean  @default(false)
+  streamMuted     Boolean  @default(false)
+  viewersImpact   Int      @default(0) // Estimated viewers lost
+
+  createdAt       DateTime @default(now())
+
+  @@index([streamId])
+  @@index([userId])
+  @@index([mentionedPlatform])
+}
+
+model WatermarkDatabase {
+  id              String   @id @default(uuid())
+  platform        String   @unique // tiktok, instagram, youtube
+
+  // Detection patterns
+  logoPatterns    Json     // Image patterns
+  textPatterns    String[] // Common text watermarks
+  audioSignatures Json?    // Audio fingerprints
+
+  // Metadata
+  confidenceThreshold Float @default(85)
+  lastUpdated     DateTime @default(now())
+
+  @@index([platform])
+}
+
+// ============================================================================
+// HELP & DOCUMENTATION SYSTEM
+// ============================================================================
+
+enum HelpCategory {
+  USER
+  CREATOR
+  MERCHANT
+  ADMIN
+  GENERAL
+}
+
+model HelpArticle {
+  id              String       @id @default(uuid())
+  category        HelpCategory
+  subcategory     String?
+
+  // Content
+  title           String
+  content         String       @db.Text
+  summary         String?
+
+  // SEO
+  slug            String       @unique
+  keywords        String[]     @default([])
+  metaDescription String?
+
+  // Media
+  coverImage      String?
+  videoUrl        String?
+  attachments     String[]     @default([])
+
+  // Related articles
+  relatedIds      String[]     @default([])
+
+  // Metrics
+  viewsCount      Int          @default(0)
+  helpfulCount    Int          @default(0)
+  notHelpfulCount Int          @default(0)
+
+  // Search
+  searchRank      Float        @default(0)
+
+  // Status
+  isPublished     Boolean      @default(true)
+  isFeatured      Boolean      @default(false)
+  publishedAt     DateTime?
+
+  // Author
+  authorId        String?
+  lastEditedBy    String?
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([category])
+  @@index([slug])
+  @@index([isPublished])
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_RESPONSE
+  RESOLVED
+  CLOSED
+}
+
+enum SupportPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum UserType {
+  USER
+  CREATOR
+  MERCHANT
+  ADMIN
+}
+
+model SupportTicket {
+  id              String              @id @default(uuid())
+  ticketNumber    String              @unique
+  userId          String
+  userType        UserType
+
+  // Issue details
+  category        String
+  subcategory     String?
+  subject         String
+  description     String              @db.Text
+  attachments     String[]            @default([])
+
+  // Status
+  status          SupportTicketStatus @default(OPEN)
+  priority        SupportPriority     @default(MEDIUM)
+
+  // Assignment
+  assignedTo      String?
+  department      String?             // Technical, Billing, General
+
+  // Communication
+  messages        TicketMessage[]
+
+  // Resolution
+  resolvedBy      String?
+  resolution      String?             @db.Text
+  satisfactionRating Int?             // 1-5
+
+  // Timestamps
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([priority])
+  @@index([ticketNumber])
+}
+
+model TicketMessage {
+  id              String        @id @default(uuid())
+  ticketId        String
+  senderId        String
+  senderType      String        // user, admin
+
+  message         String        @db.Text
+  attachments     String[]      @default([])
+  isInternal      Boolean       @default(false)
+
+  createdAt       DateTime      @default(now())
+
+  // Relations
+  ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model FAQ {
+  id              String   @id @default(uuid())
+  category        String
+  question        String
+  answer          String   @db.Text
+
+  // Order
+  displayOrder    Int      @default(0)
+
+  // Metrics
+  viewsCount      Int      @default(0)
+  helpfulCount    Int      @default(0)
+
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category])
+  @@index([displayOrder])
+}
