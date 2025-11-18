@@ -1,0 +1,903 @@
+// Fiple Database Schema
+// Complete schema for the social media platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER MANAGEMENT & AUTHENTICATION
+// ============================================================================
+
+enum UserRole {
+  ADMIN
+  APPROVER
+  CREATOR
+  VIEWER
+  USER
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  PENDING_VERIFICATION
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model User {
+  id                String            @id @default(uuid())
+  email             String            @unique
+  username          String            @unique
+  phone             String?           @unique
+  passwordHash      String
+
+  // Profile Info
+  displayName       String
+  bio               String?           @db.Text
+  avatar            String?
+  coverImage        String?
+  dateOfBirth       DateTime?
+  gender            String?
+
+  // Location & Culture
+  country           String            @default("Nigeria")
+  state             String?
+  city              String?
+  language          String            @default("en")
+
+  // Campus Info
+  campusId          String?
+  campusName        String?
+  schoolEmail       String?
+  studentId         String?
+  graduationYear    Int?
+  course            String?
+
+  // Status
+  role              UserRole          @default(USER)
+  accountStatus     AccountStatus     @default(PENDING_VERIFICATION)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  isEmailVerified   Boolean           @default(false)
+  isCampusVerified  Boolean           @default(false)
+
+  // Settings
+  lowDataMode       Boolean           @default(true)
+  darkMode          Boolean           @default(false)
+  notificationsEnabled Boolean        @default(true)
+  language_preference String          @default("en")
+
+  // Metrics (cached for performance)
+  followersCount    Int               @default(0)
+  followingCount    Int               @default(0)
+  postsCount        Int               @default(0)
+  totalLikes        Int               @default(0)
+  totalShares       Int               @default(0)
+  totalViews        Int               @default(0)
+  engagementScore   Float             @default(0)
+
+  // Milestones achieved
+  currentTier       String?           // "Freshman", "Sophomore", etc.
+  tiersAchieved     String[]          @default([])
+
+  // Timestamps
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  lastLoginAt       DateTime?
+  lastActiveAt      DateTime?
+
+  // Relations
+  posts             Post[]
+  comments          Comment[]
+  likes             Like[]
+  shares            Share[]
+  followers         Follow[]          @relation("UserFollowers")
+  following         Follow[]          @relation("UserFollowing")
+  wallet            Wallet?
+  transactions      Transaction[]
+  rewards           Reward[]
+  campusHub         CampusHub?        @relation(fields: [campusId], references: [id])
+  tickets           Ticket[]
+  skillListings     SkillListing[]
+  skillOrders       SkillOrder[]      @relation("SkillBuyer")
+  skillOrdersSeller SkillOrder[]      @relation("SkillSeller")
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  usageTracking     UsageTracking[]
+  sentTips          Tip[]             @relation("TipSender")
+  receivedTips      Tip[]             @relation("TipReceiver")
+
+  @@index([email])
+  @@index([username])
+  @@index([campusId])
+  @@index([currentTier])
+  @@index([createdAt])
+}
+
+model Follow {
+  id           String   @id @default(uuid())
+  followerId   String
+  followingId  String
+
+  follower     User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following    User     @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+// ============================================================================
+// CAMPUS HUBS & COMMUNITIES
+// ============================================================================
+
+model CampusHub {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  shortName       String?
+  description     String?  @db.Text
+  logo            String?
+  coverImage      String?
+
+  // Location
+  state           String
+  city            String
+  address         String?
+
+  // Verification
+  isVerified      Boolean  @default(false)
+  verificationDoc String?
+
+  // Metadata
+  website         String?
+  studentCount    Int      @default(0)
+  postsCount      Int      @default(0)
+
+  // Settings
+  isActive        Boolean  @default(true)
+  requiresApproval Boolean @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  members         User[]
+  posts           Post[]
+
+  @@index([name])
+  @@index([state])
+}
+
+// ============================================================================
+// CONTENT SYSTEM (Posts, Reels, Stories)
+// ============================================================================
+
+enum ContentType {
+  POST        // Regular text/image post
+  REEL        // Short video (15-90s)
+  STORY       // Time-limited authentic content
+  SKILL_POST  // Marketplace listing post
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  FLAGGED
+  REMOVED
+}
+
+model Post {
+  id              String        @id @default(uuid())
+  userId          String
+  contentType     ContentType   @default(POST)
+  status          ContentStatus @default(PUBLISHED)
+
+  // Content
+  caption         String?       @db.Text
+  mediaUrls       String[]      @default([])
+  mediaTypes      String[]      @default([]) // image, video, audio
+  thumbnailUrl    String?
+  duration        Int?          // For videos, in seconds
+
+  // Categorization
+  tags            String[]      @default([])
+  mentions        String[]      @default([])
+  hashtags        String[]      @default([])
+
+  // Location & Culture
+  campusHubId     String?
+  location        String?
+  isLocal         Boolean       @default(true)
+  culturalTags    String[]      @default([]) // Nigerian-specific tags
+
+  // Metrics
+  viewsCount      Int           @default(0)
+  likesCount      Int           @default(0)
+  commentsCount   Int           @default(0)
+  sharesCount     Int           @default(0)
+  tipsCount       Int           @default(0)
+  tipsAmount      Float         @default(0)
+
+  // Algorithm scoring
+  engagementScore Float         @default(0)
+  recencyScore    Float         @default(0)
+  culturalScore   Float         @default(0)
+  totalScore      Float         @default(0)
+
+  // Time-limited content (for Stories)
+  expiresAt       DateTime?
+
+  // Moderation
+  isFlagged       Boolean       @default(false)
+  flagReason      String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  publishedAt     DateTime?
+
+  // Relations
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campusHub       CampusHub?    @relation(fields: [campusHubId], references: [id])
+  comments        Comment[]
+  likes           Like[]
+  shares          Share[]
+  tips            Tip[]
+
+  @@index([userId])
+  @@index([contentType])
+  @@index([status])
+  @@index([campusHubId])
+  @@index([createdAt])
+  @@index([totalScore])
+  @@index([publishedAt])
+}
+
+model Comment {
+  id              String   @id @default(uuid())
+  postId          String
+  userId          String
+  content         String   @db.Text
+
+  // Nested comments
+  parentId        String?
+
+  // Metrics
+  likesCount      Int      @default(0)
+  repliesCount    Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  post            Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent          Comment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies         Comment[] @relation("CommentReplies")
+
+  @@index([postId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model Share {
+  id          String   @id @default(uuid())
+  postId      String
+  userId      String
+
+  // Share details
+  platform    String?  // whatsapp, twitter, etc.
+  message     String?
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
+}
+
+// ============================================================================
+// REWARD SYSTEM (Milestones & Payouts)
+// ============================================================================
+
+enum RewardType {
+  MILESTONE_TIER_1  // Freshman
+  MILESTONE_TIER_2  // Sophomore
+  MILESTONE_TIER_3  // Junior
+  MILESTONE_TIER_4  // Senior
+  MILESTONE_TIER_5  // Alumnus
+  WEEKLY_TOP_CREATOR
+  REFERRAL_BONUS
+  SPECIAL_EVENT
+}
+
+enum RewardStatus {
+  PENDING
+  VERIFIED
+  APPROVED
+  DISBURSED
+  FAILED
+  CANCELLED
+}
+
+model Reward {
+  id              String        @id @default(uuid())
+  userId          String
+  type            RewardType
+  status          RewardStatus  @default(PENDING)
+
+  // Reward details
+  amount          Float         // In Naira
+  currency        String        @default("NGN")
+  description     String
+
+  // Milestone verification data
+  followersCount  Int?
+  likesCount      Int?
+  sharesCount     Int?
+  weekNumber      Int?          // For weekly rewards
+  rank            Int?          // 1st, 2nd, 3rd place
+
+  // Processing
+  verifiedAt      DateTime?
+  verifiedBy      String?
+  approvedAt      DateTime?
+  approvedBy      String?
+  disbursedAt     DateTime?
+
+  // Payment reference
+  transactionId   String?       @unique
+  paymentRef      String?
+
+  failureReason   String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction     Transaction?  @relation(fields: [transactionId], references: [id])
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// WALLET & TRANSACTIONS
+// ============================================================================
+
+enum TransactionType {
+  MILESTONE_REWARD
+  WEEKLY_REWARD
+  TIP_RECEIVED
+  TIP_SENT
+  SKILL_PAYMENT_RECEIVED
+  SKILL_PAYMENT_SENT
+  WITHDRAWAL
+  DEPOSIT
+  REFUND
+  POINTS_PURCHASE
+  POINTS_EARNED
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model Wallet {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+
+  // Balances
+  balanceNGN      Float    @default(0)
+  balanceUSD      Float    @default(0)
+  fipplePoints    Int      @default(0)
+
+  // Lifetime stats
+  totalEarned     Float    @default(0)
+  totalWithdrawn  Float    @default(0)
+  totalTipped     Float    @default(0)
+
+  // Bank details (for withdrawals)
+  bankName        String?
+  accountNumber   String?
+  accountName     String?
+
+  // Paystack/Stripe customer IDs
+  paystackCustomerId String?
+  stripeCustomerId   String?
+
+  // Security
+  isPinSet        Boolean  @default(false)
+  pinHash         String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Transaction {
+  id              String            @id @default(uuid())
+  userId          String
+  type            TransactionType
+  status          TransactionStatus @default(PENDING)
+
+  // Amounts
+  amount          Float
+  currency        String            @default("NGN")
+  fee             Float             @default(0)
+  netAmount       Float
+
+  // Details
+  description     String
+  reference       String            @unique
+
+  // Payment gateway info
+  gateway         String?           // paystack, stripe, etc.
+  gatewayRef      String?
+  gatewayResponse Json?
+
+  // Related entities
+  relatedUserId   String?
+  relatedPostId   String?
+
+  // Balances snapshot
+  balanceBefore   Float?
+  balanceAfter    Float?
+
+  failureReason   String?
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  completedAt     DateTime?
+
+  // Relations
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rewards         Reward[]
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([reference])
+  @@index([createdAt])
+}
+
+model Tip {
+  id          String   @id @default(uuid())
+  postId      String
+  senderId    String
+  receiverId  String
+
+  amount      Float
+  currency    String   @default("NGN")
+  message     String?
+
+  // Payment
+  reference   String   @unique
+  status      TransactionStatus @default(PENDING)
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  sender      User     @relation("TipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User     @relation("TipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+// ============================================================================
+// SKILL EXCHANGE MARKETPLACE
+// ============================================================================
+
+enum SkillCategory {
+  GRAPHICS_DESIGN
+  TUTORING
+  WRITING
+  PROGRAMMING
+  VIDEO_EDITING
+  PHOTOGRAPHY
+  MUSIC_PRODUCTION
+  FASHION_DESIGN
+  EVENT_PLANNING
+  SOCIAL_MEDIA_MANAGEMENT
+  OTHER
+}
+
+enum SkillListingStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+model SkillListing {
+  id              String             @id @default(uuid())
+  userId          String
+
+  // Listing info
+  title           String
+  description     String             @db.Text
+  category        SkillCategory
+  status          SkillListingStatus @default(ACTIVE)
+
+  // Pricing
+  priceMin        Float
+  priceMax        Float?
+  currency        String             @default("NGN")
+
+  // Details
+  deliveryTime    String             // "1 day", "3 days", etc.
+  portfolio       String[]           @default([]) // URLs to work samples
+  tags            String[]           @default([])
+
+  // Metrics
+  viewsCount      Int                @default(0)
+  ordersCount     Int                @default(0)
+  rating          Float?
+  reviewsCount    Int                @default(0)
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  // Relations
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders          SkillOrder[]
+
+  @@index([userId])
+  @@index([category])
+  @@index([status])
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+model SkillOrder {
+  id              String      @id @default(uuid())
+  listingId       String
+  buyerId         String
+  sellerId        String
+
+  // Order details
+  description     String      @db.Text
+  agreedPrice     Float
+  currency        String      @default("NGN")
+  status          OrderStatus @default(PENDING)
+
+  // Delivery
+  deliveryDate    DateTime?
+  deliveredAt     DateTime?
+  completedAt     DateTime?
+
+  // Payment
+  transactionRef  String?
+  isPaid          Boolean     @default(false)
+
+  // Review
+  rating          Int?
+  review          String?     @db.Text
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  listing         SkillListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyer           User         @relation("SkillBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller          User         @relation("SkillSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+}
+
+// ============================================================================
+// NOTIFICATIONS & REAL-TIME
+// ============================================================================
+
+enum NotificationType {
+  NEW_FOLLOWER
+  NEW_LIKE
+  NEW_COMMENT
+  NEW_SHARE
+  NEW_TIP
+  MILESTONE_ACHIEVED
+  REWARD_DISBURSED
+  SKILL_ORDER
+  MENTION
+  CAMPUS_HUB_UPDATE
+  SYSTEM_ANNOUNCEMENT
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String
+  type        NotificationType
+
+  title       String
+  message     String
+  data        Json?            // Additional data
+
+  isRead      Boolean          @default(false)
+  readAt      DateTime?
+
+  // Action link
+  actionUrl   String?
+
+  createdAt   DateTime         @default(now())
+
+  // Relations
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// ADMIN & CRM SYSTEM
+// ============================================================================
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_RESPONSE
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Ticket {
+  id          String         @id @default(uuid())
+  ticketNumber String        @unique
+  userId      String
+
+  subject     String
+  description String         @db.Text
+  category    String
+  priority    TicketPriority @default(MEDIUM)
+  status      TicketStatus   @default(OPEN)
+
+  // Assignment
+  assignedTo  String?
+
+  // Resolution
+  resolvedAt  DateTime?
+  resolution  String?        @db.Text
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relations
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    TicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([ticketNumber])
+}
+
+model TicketMessage {
+  id          String   @id @default(uuid())
+  ticketId    String
+  senderId    String
+
+  message     String   @db.Text
+  attachments String[] @default([])
+  isInternal  Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+// ============================================================================
+// ANALYTICS & TRACKING
+// ============================================================================
+
+model UsageTracking {
+  id              String   @id @default(uuid())
+  userId          String
+
+  // Daily limits
+  date            DateTime @default(now())
+  postsCreated    Int      @default(0)
+  messagesent     Int      @default(0)
+  coinsSpent      Int      @default(0)
+
+  // Session info
+  sessionDuration Int      @default(0) // in seconds
+  pagesViewed     Int      @default(0)
+
+  createdAt       DateTime @default(now())
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+
+  action      String   // reward_disbursement, payment_update, etc.
+  entity      String   // User, Reward, Transaction, etc.
+  entityId    String
+
+  // Details
+  changes     Json?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// LEADERBOARD (Weekly Top Creators)
+// ============================================================================
+
+model WeeklyLeaderboard {
+  id              String   @id @default(uuid())
+  userId          String
+  weekNumber      Int
+  year            Int
+
+  // Metrics for the week
+  newFollowers    Int      @default(0)
+  totalViews      Int      @default(0)
+  totalComments   Int      @default(0)
+
+  // Calculated engagement score
+  engagementScore Float    @default(0)
+  rank            Int?
+
+  // Prize
+  prizeAmount     Float?
+  isPaid          Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, weekNumber, year])
+  @@index([weekNumber, year])
+  @@index([engagementScore])
+}
+
+// ============================================================================
+// SUBSCRIPTIONS (Creator+ Plans)
+// ============================================================================
+
+enum SubscriptionPlan {
+  FREE
+  CREATOR_PLUS_MONTHLY
+  CREATOR_PLUS_YEARLY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  SUSPENDED
+}
+
+model Subscription {
+  id              String             @id @default(uuid())
+  userId          String
+  plan            SubscriptionPlan
+  status          SubscriptionStatus @default(ACTIVE)
+
+  // Pricing
+  amount          Float
+  currency        String             @default("NGN")
+
+  // Billing cycle
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+
+  // Payment gateway
+  paystackSubId   String?
+  stripeSubId     String?
+
+  // Cancellation
+  cancelAtPeriodEnd Boolean          @default(false)
+  cancelledAt       DateTime?
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Invoice {
+  id              String   @id @default(uuid())
+  userId          String
+
+  invoiceNumber   String   @unique
+  amount          Float
+  currency        String   @default("NGN")
+
+  description     String
+  status          String   // paid, pending, failed
+
+  // Payment
+  paidAt          DateTime?
+  paymentRef      String?
+
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([invoiceNumber])
+}
