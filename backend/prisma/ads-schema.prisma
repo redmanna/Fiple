@@ -1,0 +1,390 @@
+// Advertising & Business Promotion Schema
+// Add these models to your main schema.prisma file
+
+// ============================================================================
+// ADVERTISING SYSTEM
+// ============================================================================
+
+enum AdFormat {
+  DISPLAY_BANNER
+  NATIVE_POST
+  VIDEO_PREROLL
+  VIDEO_INSTREAM
+  STORY_AD
+  CAMPUS_HUB_AD
+  PROMOTED_POST
+}
+
+enum AdStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum PricingModel {
+  CPM    // Cost per 1000 impressions
+  CPC    // Cost per click
+  CPV    // Cost per view
+  CPA    // Cost per action
+  CPL    // Cost per lead
+  BUDGET // Fixed budget
+}
+
+enum TargetingGender {
+  ALL
+  MALE
+  FEMALE
+  NON_BINARY
+}
+
+model Advertisement {
+  id              String    @id @default(uuid())
+  businessId      String
+  campaignId      String?
+
+  // Ad Details
+  name            String
+  format          AdFormat
+  status          AdStatus  @default(DRAFT)
+
+  // Creative Content
+  headline        String?
+  description     String?   @db.Text
+  imageUrl        String?
+  videoUrl        String?
+  thumbnailUrl    String?
+  ctaText         String?   // Call to action
+  ctaUrl          String?   // Landing page
+
+  // Targeting
+  targeting       Json      // Detailed targeting options
+
+  // Budget & Pricing
+  pricingModel    PricingModel
+  bidAmount       Float?    // Bid per action
+  dailyBudget     Float?
+  totalBudget     Float
+  totalSpent      Float     @default(0)
+
+  // Scheduling
+  startDate       DateTime
+  endDate         DateTime?
+
+  // Performance Metrics
+  impressions     Int       @default(0)
+  clicks          Int       @default(0)
+  views           Int       @default(0)
+  conversions     Int       @default(0)
+  reach           Int       @default(0)  // Unique users
+  engagement      Int       @default(0)  // Total interactions
+
+  // Computed Metrics
+  ctr             Float     @default(0)  // Click-through rate
+  cpm             Float     @default(0)  // Cost per mille
+  cpc             Float     @default(0)  // Cost per click
+  conversionRate  Float     @default(0)
+
+  // Admin
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  rejectionReason String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  business        BusinessAccount @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign        AdCampaign?     @relation(fields: [campaignId], references: [id])
+  impressionLogs  AdImpression[]
+  clickLogs       AdClick[]
+
+  @@index([businessId])
+  @@index([campaignId])
+  @@index([status])
+  @@index([format])
+  @@index([startDate, endDate])
+}
+
+// Ad Campaign (Group multiple ads)
+model AdCampaign {
+  id              String    @id @default(uuid())
+  businessId      String
+
+  name            String
+  objective       String    // awareness, traffic, conversions, etc.
+  status          AdStatus  @default(DRAFT)
+
+  totalBudget     Float
+  totalSpent      Float     @default(0)
+
+  startDate       DateTime
+  endDate         DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  business        BusinessAccount @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  ads             Advertisement[]
+
+  @@index([businessId])
+  @@index([status])
+}
+
+// Ad Impression Logs (for analytics)
+model AdImpression {
+  id              String    @id @default(uuid())
+  adId            String
+  userId          String?
+
+  // Context
+  platform        String    // ios, android, web
+  placement       String    // feed, story, campus_hub
+
+  // Metadata
+  sessionId       String?
+  deviceId        String?
+  ipAddress       String?
+  userAgent       String?
+
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  ad              Advertisement @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@index([adId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Ad Click Logs
+model AdClick {
+  id              String    @id @default(uuid())
+  adId            String
+  userId          String?
+
+  // Context
+  platform        String
+  placement       String
+
+  // Conversion tracking
+  converted       Boolean   @default(false)
+  conversionType  String?   // signup, purchase, install, etc.
+
+  // Metadata
+  sessionId       String?
+  deviceId        String?
+  ipAddress       String?
+  referrer        String?
+
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  ad              Advertisement @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@index([adId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// BUSINESS ACCOUNTS
+// ============================================================================
+
+enum BusinessTier {
+  FREE
+  BASIC     // ₦10,000/month
+  PRO       // ₦30,000/month
+  ENTERPRISE // Custom pricing
+}
+
+model BusinessAccount {
+  id              String        @id @default(uuid())
+  userId          String        @unique
+
+  // Business Info
+  businessName    String
+  description     String?       @db.Text
+  category        String        // Restaurant, Salon, Tech, etc.
+  website         String?
+  email           String?
+  phone           String?
+
+  // Address
+  address         String?
+  city            String?
+  state           String?
+  country         String        @default("Nigeria")
+
+  // Tier & Billing
+  tier            BusinessTier  @default(FREE)
+  subscriptionId  String?       @unique
+
+  // Verification
+  isVerified      Boolean       @default(false)
+  verifiedAt      DateTime?
+  businessLicense String?       // Document URL
+
+  // Stats
+  followers       Int           @default(0)
+  totalAdSpend    Float         @default(0)
+  totalCampaigns  Int           @default(0)
+
+  // Features Usage
+  promotedPostsUsed Int         @default(0)
+  promotedPostsLimit Int        @default(0)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription    BusinessSubscription? @relation(fields: [subscriptionId], references: [id])
+  campaigns       AdCampaign[]
+  ads             Advertisement[]
+  promotedPosts   PromotedPost[]
+
+  @@index([userId])
+  @@index([tier])
+  @@index([category])
+  @@index([city, state])
+}
+
+// Business Subscription
+model BusinessSubscription {
+  id              String        @id @default(uuid())
+
+  tier            BusinessTier
+  status          String        // active, cancelled, expired
+
+  amount          Float
+  currency        String        @default("NGN")
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+
+  // Payment
+  paystackSubId   String?
+
+  // Cancellation
+  cancelAtPeriodEnd Boolean     @default(false)
+  cancelledAt       DateTime?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  businessAccount BusinessAccount?
+
+  @@index([status])
+}
+
+// ============================================================================
+// PROMOTED POSTS (Self-Service Ads)
+// ============================================================================
+
+enum PromotionStatus {
+  DRAFT
+  PENDING_PAYMENT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+model PromotedPost {
+  id              String          @id @default(uuid())
+  businessId      String
+  postId          String?         // If promoting existing post
+
+  // Content (if creating new promoted post)
+  headline        String?
+  description     String?         @db.Text
+  imageUrl        String?
+  videoUrl        String?
+  ctaText         String?
+  ctaUrl          String?
+
+  // Targeting
+  targetAudience  Json            // Age, gender, location, interests, campus
+
+  // Budget & Schedule
+  budget          Float
+  dailyBudget     Float?
+  duration        Int             // Days
+  startDate       DateTime
+  endDate         DateTime
+
+  status          PromotionStatus @default(DRAFT)
+
+  // Performance
+  impressions     Int             @default(0)
+  clicks          Int             @default(0)
+  reach           Int             @default(0)
+  engagement      Int             @default(0)
+  spent           Float           @default(0)
+
+  // Payment
+  paymentRef      String?
+  paidAt          DateTime?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  business        BusinessAccount @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  post            Post?           @relation(fields: [postId], references: [id])
+
+  @@index([businessId])
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+// ============================================================================
+// AD ANALYTICS
+// ============================================================================
+
+model AdAnalyticsSummary {
+  id              String    @id @default(uuid())
+  adId            String
+  date            DateTime  // Daily summary
+
+  impressions     Int       @default(0)
+  clicks          Int       @default(0)
+  views           Int       @default(0)
+  reach           Int       @default(0)
+  engagement      Int       @default(0)
+  conversions     Int       @default(0)
+  spent           Float     @default(0)
+
+  // Computed
+  ctr             Float     @default(0)
+  cpm             Float     @default(0)
+  cpc             Float     @default(0)
+
+  createdAt       DateTime  @default(now())
+
+  @@unique([adId, date])
+  @@index([adId])
+  @@index([date])
+}
+
+// ============================================================================
+// ADD TO EXISTING USER MODEL
+// ============================================================================
+
+// Add to User model:
+// businessAccount BusinessAccount?
+
+// ============================================================================
+// ADD TO EXISTING POST MODEL
+// ============================================================================
+
+// Add to Post model:
+// isPromoted      Boolean          @default(false)
+// promotedPosts   PromotedPost[]

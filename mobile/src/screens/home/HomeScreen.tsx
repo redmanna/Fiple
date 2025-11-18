@@ -12,9 +12,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { feedService, postService } from '../../api/services';
 import type { Post } from '../../../../shared/types';
+import AdCard from '../../components/AdCard';
+
+type FeedItem = { type: 'post' | 'ad'; data: any };
 
 export default function HomeScreen() {
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
@@ -27,7 +30,9 @@ export default function HomeScreen() {
       }
 
       const feed = await feedService.getFeed({ page: refresh ? 1 : page, pageSize: 20 });
-      setPosts(refresh ? feed.data : [...posts, ...feed.data]);
+      // Feed now returns { items: [{type, data}], ... }
+      const items = feed.items || feed.posts?.map((p: Post) => ({ type: 'post' as const, data: p })) || [];
+      setFeedItems(refresh ? items : [...feedItems, ...items]);
     } catch (error) {
       console.error('Error loading feed:', error);
     } finally {
@@ -43,23 +48,35 @@ export default function HomeScreen() {
   const handleLike = async (postId: string) => {
     try {
       const result = await postService.likePost(postId);
-      setPosts(
-        posts.map((post) =>
-          post.id === postId
-            ? {
-                ...post,
+      setFeedItems(
+        feedItems.map((item) => {
+          if (item.type === 'post' && item.data.id === postId) {
+            return {
+              ...item,
+              data: {
+                ...item.data,
                 isLiked: result.liked,
-                likesCount: result.liked ? post.likesCount + 1 : post.likesCount - 1,
-              }
-            : post
-        )
+                likesCount: result.liked ? item.data.likesCount + 1 : item.data.likesCount - 1,
+              },
+            };
+          }
+          return item;
+        })
       );
     } catch (error) {
       console.error('Error liking post:', error);
     }
   };
 
-  const renderPost = ({ item }: { item: Post }) => (
+  const renderFeedItem = ({ item }: { item: FeedItem }) => {
+    if (item.type === 'ad') {
+      return <AdCard ad={item.data} />;
+    }
+
+    return renderPost(item.data);
+  };
+
+  const renderPost = (item: Post) => (
     <View style={styles.postCard}>
       {/* User Header */}
       <View style={styles.postHeader}>
@@ -142,9 +159,9 @@ export default function HomeScreen() {
       </View>
 
       <FlatList
-        data={posts}
-        renderItem={renderPost}
-        keyExtractor={(item) => item.id}
+        data={feedItems}
+        renderItem={renderFeedItem}
+        keyExtractor={(item, index) => `${item.type}-${item.data.id || index}`}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => loadFeed(true)} />
         }

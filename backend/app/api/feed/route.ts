@@ -1,7 +1,7 @@
-// GET /api/feed - Get personalized feed
+// GET /api/feed - Get personalized feed with ads
 import { NextRequest } from 'next/server';
 import { withAuth, successResponse, errorResponse } from '@/lib/middleware';
-import { getPersonalizedFeed } from '@/lib/feed-algorithm';
+import { getPersonalizedFeedWithAds } from '@/lib/feed-algorithm';
 import { ErrorCode, ContentType } from '@/../../../../shared/types';
 
 export const GET = withAuth(async (req: any) => {
@@ -13,14 +13,18 @@ export const GET = withAuth(async (req: any) => {
     const contentType = searchParams.get('contentType') as ContentType | undefined;
     const campusHubId = searchParams.get('campusHubId') || undefined;
     const sortBy = (searchParams.get('sortBy') as 'recent' | 'trending' | 'top') || 'trending';
+    const includeAds = searchParams.get('includeAds') !== 'false'; // Default true
+    const adFrequency = parseInt(searchParams.get('adFrequency') || '5');
 
-    const feed = await getPersonalizedFeed({
+    const feed = await getPersonalizedFeedWithAds({
       userId: req.user.userId,
       page,
       pageSize,
       contentType,
       campusHubId,
       sortBy,
+      includeAds,
+      adFrequency,
     });
 
     return successResponse(feed);

@@ -1,6 +1,7 @@
 // Feed Algorithm - Cultural Relevance & Engagement Scoring
 import prisma from './prisma';
 import { ContentType } from '@prisma/client';
+import { getAdsForUser } from './advertising';
 
 /**
  * Calculate post scores for feed ranking
@@ -329,4 +330,64 @@ export async function getTrendingHashtags(limit: number = 10) {
     .slice(0, limit);
 
   return trending;
+}
+
+/**
+ * Get personalized feed with ads injected
+ */
+export interface GetFeedWithAdsParams extends GetFeedParams {
+  includeAds?: boolean;
+  adFrequency?: number; // Show ad every N posts (default: 5)
+}
+
+export async function getPersonalizedFeedWithAds(params: GetFeedWithAdsParams) {
+  const {
+    userId,
+    includeAds = true,
+    adFrequency = 5,
+    ...feedParams
+  } = params;
+
+  // Get regular posts
+  const feedResult = await getPersonalizedFeed({ userId, ...feedParams });
+
+  // If ads disabled or user not logged in, return posts only
+  if (!includeAds || !userId) {
+    return {
+      ...feedResult,
+      items: feedResult.posts.map(post => ({ type: 'post', data: post })),
+    };
+  }
+
+  // Get ads for this user
+  const numberOfAdsNeeded = Math.ceil(feedResult.posts.length / adFrequency);
+  const ads = await getAdsForUser(userId, 'feed', numberOfAdsNeeded);
+
+  // Inject ads into feed at regular intervals
+  const items: Array<{ type: 'post' | 'ad'; data: any }> = [];
+  let adIndex = 0;
+
+  feedResult.posts.forEach((post, index) => {
+    items.push({ type: 'post', data: post });
+
+    // Insert ad every N posts
+    if ((index + 1) % adFrequency === 0 && adIndex < ads.length) {
+      items.push({ type: 'ad', data: ads[adIndex] });
+      adIndex++;
+    }
+  });
+
+  // Add any remaining ads at the end
+  while (adIndex < ads.length) {
+    items.push({ type: 'ad', data: ads[adIndex] });
+    adIndex++;
+  }
+
+  return {
+    items,
+    total: feedResult.total,
+    page: feedResult.page,
+    pageSize: feedResult.pageSize,
+    hasMore: feedResult.hasMore,
+  };
 }

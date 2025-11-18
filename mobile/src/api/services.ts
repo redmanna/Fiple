@@ -14,6 +14,9 @@ import type {
   CreatePostRequest,
 } from '../../../shared/types';
 
+// Import ad and business services
+export { adService, businessService } from './ad-service';
+
 // ============================================================================
 // AUTH SERVICES
 // ============================================================================
