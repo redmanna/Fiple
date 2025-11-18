@@ -19,7 +19,7 @@ export const adService = {
   },
 
   // Record ad conversion
-  recordConversion: async (adId: string, userId?: string, conversionType: string, value?: number) => {
+  recordConversion: async (adId: string, conversionType: string, userId?: string, value?: number) => {
     return apiClient.post('/ads/conversion', {
       adId,
       userId,
