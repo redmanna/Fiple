@@ -1,0 +1,449 @@
+// ============================================================================
+// MESSAGING SYSTEM
+// ============================================================================
+
+enum ConversationType {
+  DIRECT      // One-on-one chat
+  GROUP       // Group conversation (future)
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  DELETED
+}
+
+model Conversation {
+  id              String           @id @default(uuid())
+  type            ConversationType @default(DIRECT)
+
+  // Participants
+  participant1Id  String
+  participant2Id  String?
+
+  // Last message info (for inbox display)
+  lastMessageText String?
+  lastMessageAt   DateTime?
+  lastMessageBy   String?
+
+  // Settings
+  isMuted         Boolean          @default(false)
+  isArchived      Boolean          @default(false)
+
+  // Restrictions
+  canMessage      Boolean          @default(true) // Can be false if not following
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  messages        Message[]
+
+  @@unique([participant1Id, participant2Id])
+  @@index([participant1Id])
+  @@index([participant2Id])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id              String        @id @default(uuid())
+  conversationId  String
+  senderId        String
+  recipientId     String
+
+  // Content
+  content         String        @db.Text
+  mediaUrls       String[]      @default([])
+  mediaTypes      String[]      @default([]) // image, video, audio
+
+  // Status
+  status          MessageStatus @default(SENT)
+  isEdited        Boolean       @default(false)
+  editedAt        DateTime?
+
+  // Reactions
+  reactions       Json?         // {emoji: [userIds]}
+
+  // Delivery tracking
+  deliveredAt     DateTime?
+  readAt          DateTime?
+
+  // Deletion (soft delete)
+  isDeleted       Boolean       @default(false)
+  deletedBy       String[]      @default([]) // User IDs who deleted
+
+  // Reply/Thread
+  replyToId       String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  conversation    Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  replyTo         Message?      @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies         Message[]     @relation("MessageReplies")
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([createdAt])
+}
+
+model MessageRequest {
+  id              String   @id @default(uuid())
+  senderId        String
+  recipientId     String
+
+  // Initial message
+  message         String   @db.Text
+
+  // Status
+  status          String   @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  acceptedAt      DateTime?
+  rejectedAt      DateTime?
+
+  createdAt       DateTime @default(now())
+
+  @@unique([senderId, recipientId])
+  @@index([recipientId])
+  @@index([status])
+}
+
+// ============================================================================
+// LIVE STREAMING SYSTEM
+// ============================================================================
+
+enum LiveStreamStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+model LiveStream {
+  id              String           @id @default(uuid())
+  hostId          String
+  title           String
+  description     String?          @db.Text
+  thumbnailUrl    String?
+
+  // Stream details
+  status          LiveStreamStatus @default(SCHEDULED)
+  streamKey       String           @unique // For RTMP/WebRTC
+  streamUrl       String?          // Playback URL
+
+  // Scheduling
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  endedAt         DateTime?
+
+  // Settings
+  isPublic        Boolean          @default(true)
+  allowGifts      Boolean          @default(true)
+  subscribersOnly Boolean          @default(false)
+
+  // Metrics (real-time counters)
+  peakViewers     Int              @default(0)
+  totalViewers    Int              @default(0)
+  currentViewers  Int              @default(0)
+  totalGifts      Int              @default(0)
+  totalRevenue    Float            @default(0)
+  totalComments   Int              @default(0)
+
+  // Highlights (memory-efficient)
+  highlightUrls   String[]         @default([]) // Only key moments
+  highlightCount  Int              @default(0)
+
+  // Auto-delete full recording after X hours
+  fullRecordingUrl String?
+  recordingDeleteAt DateTime?
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  viewers         LiveViewer[]
+  gifts           LiveGift[]
+  comments        LiveComment[]
+  highlights      LiveHighlight[]
+  subscriptions   LiveSubscription[]
+
+  @@index([hostId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model LiveViewer {
+  id              String     @id @default(uuid())
+  streamId        String
+  userId          String?    // Null for anonymous
+
+  // Viewer info
+  username        String?
+  displayName     String?
+  avatar          String?
+
+  // Engagement
+  joinedAt        DateTime   @default(now())
+  leftAt          DateTime?
+  watchDuration   Int        @default(0) // seconds
+  commentsCount   Int        @default(0)
+  giftsCount      Int        @default(0)
+  giftsValue      Float      @default(0)
+
+  // Ranking (calculated real-time)
+  engagementScore Float      @default(0)
+  rank            Int?
+
+  // Badges
+  badges          String[]   @default([]) // "TOP_GIFTER", "LOYAL_FAN", "FIRST_VIEWER"
+
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  stream          LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@unique([streamId, userId])
+  @@index([streamId])
+  @@index([userId])
+  @@index([engagementScore])
+}
+
+enum GiftType {
+  ROSE          // ₦50
+  HEART         // ₦100
+  STAR          // ₦200
+  DIAMOND       // ₦500
+  CROWN         // ₦1000
+  ROCKET        // ₦2000
+  FERRARI       // ₦5000
+  MANSION       // ₦10000
+}
+
+model LiveGift {
+  id              String     @id @default(uuid())
+  streamId        String
+  senderId        String?
+  recipientId     String     // Host
+
+  // Gift details
+  giftType        GiftType
+  amount          Float
+  currency        String     @default("NGN")
+  quantity        Int        @default(1)
+
+  // Display effects
+  effectLevel     Int        @default(1) // 1 = basic, 2 = medium, 3 = premium
+  showAnimation   Boolean    @default(true)
+
+  // Message
+  message         String?
+
+  // Transaction
+  transactionRef  String?    @unique
+
+  createdAt       DateTime   @default(now())
+
+  // Relations
+  stream          LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@index([streamId])
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([createdAt])
+}
+
+model LiveComment {
+  id              String     @id @default(uuid())
+  streamId        String
+  userId          String?
+  username        String?
+
+  content         String     @db.Text
+
+  // Moderation
+  isPinned        Boolean    @default(false)
+  isDeleted       Boolean    @default(false)
+
+  createdAt       DateTime   @default(now())
+
+  // Relations
+  stream          LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@index([streamId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model LiveHighlight {
+  id              String     @id @default(uuid())
+  streamId        String
+
+  // Highlight details
+  title           String?
+  thumbnailUrl    String?
+  videoUrl        String     // Short clip (10-30s)
+  duration        Int        // seconds
+
+  // Timestamp in stream
+  timestamp       Int        // seconds from start
+
+  // Auto-generated or manual
+  isAutoGenerated Boolean    @default(false)
+  reason          String?    // "peak_viewers", "high_gifts", "manual"
+
+  viewsCount      Int        @default(0)
+
+  createdAt       DateTime   @default(now())
+
+  // Relations
+  stream          LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@index([streamId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// LIVE STREAM SUBSCRIPTIONS (For creators with 5K+ followers)
+// ============================================================================
+
+enum LiveSubscriptionTier {
+  BASIC         // ₦500/month
+  PREMIUM       // ₦1000/month
+  VIP           // ₦2000/month
+}
+
+enum LiveSubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+model LiveSubscription {
+  id              String                 @id @default(uuid())
+  streamId        String?                // Can be general to creator or stream-specific
+  hostId          String
+  subscriberId    String
+
+  // Subscription details
+  tier            LiveSubscriptionTier   @default(BASIC)
+  status          LiveSubscriptionStatus @default(ACTIVE)
+  amount          Float
+  currency        String                 @default("NGN")
+
+  // Benefits
+  benefits        Json?                  // Custom badges, exclusive streams, etc.
+
+  // Billing
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  renewsAt           DateTime?
+
+  // Cancellation
+  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelledAt        DateTime?
+
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  // Relations
+  stream          LiveStream?            @relation(fields: [streamId], references: [id])
+
+  @@unique([hostId, subscriberId])
+  @@index([hostId])
+  @@index([subscriberId])
+  @@index([status])
+}
+
+model LiveBulletin {
+  id              String     @id @default(uuid())
+  hostId          String
+
+  // Bulletin content
+  title           String
+  content         String     @db.Text
+  imageUrl        String?
+
+  // Targeting
+  tier            LiveSubscriptionTier? // Null = all subscribers
+  isPublic        Boolean    @default(false) // If true, visible to all followers
+
+  // Metrics
+  viewsCount      Int        @default(0)
+  reactionsCount  Int        @default(0)
+
+  // Schedule
+  publishedAt     DateTime?
+  expiresAt       DateTime?
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([hostId])
+  @@index([publishedAt])
+}
+
+// ============================================================================
+// GIFTER BADGES & LEVELS
+// ============================================================================
+
+enum BadgeType {
+  TOP_GIFTER_BRONZE   // 5+ gifts in stream
+  TOP_GIFTER_SILVER   // 20+ gifts in stream
+  TOP_GIFTER_GOLD     // 50+ gifts in stream
+  LOYAL_FAN           // Attended 10+ streams
+  FIRST_VIEWER        // First to join stream
+  EARLY_SUPPORTER     // Subscribed in first month
+  VIP_MEMBER          // VIP tier subscriber
+  SUPER_FAN           // Total ₦50K+ gifts to creator
+}
+
+model UserBadge {
+  id              String     @id @default(uuid())
+  userId          String
+  hostId          String?    // Badge earned for specific creator
+
+  badgeType       BadgeType
+  level           Int        @default(1)
+
+  // Achievement details
+  earnedAt        DateTime   @default(now())
+  earnedFor       String?    // Stream ID or reason
+
+  // Display
+  isActive        Boolean    @default(true)
+  displayOrder    Int        @default(0)
+
+  @@index([userId])
+  @@index([hostId])
+  @@index([badgeType])
+}
+
+model GifterLevel {
+  id              String     @id @default(uuid())
+  userId          String
+  hostId          String?    // Level for specific creator or platform-wide
+
+  // Level progression
+  currentLevel    Int        @default(1)
+  currentXP       Int        @default(0)
+  nextLevelXP     Int        @default(100)
+
+  // Stats
+  totalGifts      Int        @default(0)
+  totalSpent      Float      @default(0)
+  streamsAttended Int        @default(0)
+
+  // Benefits unlocked
+  customBadge     String?
+  customColor     String?
+  priorityChat    Boolean    @default(false)
+
+  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime   @default(now())
+
+  @@unique([userId, hostId])
+  @@index([userId])
+  @@index([currentLevel])
+}

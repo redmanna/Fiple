@@ -17,6 +17,9 @@ import type {
 // Import ad and business services
 export { adService, businessService } from './ad-service';
 
+// Import messaging and livestream services
+export { messageService, livestreamService } from './messaging-livestream-service';
+
 // ============================================================================
 // AUTH SERVICES
 // ============================================================================
