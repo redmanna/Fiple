@@ -1,5 +1,6 @@
 // Paystack Integration - Nigerian Payments
 import axios from 'axios';
+import crypto from 'crypto';
 import { generateTransactionRef } from './auth';
 import prisma from './prisma';
 
@@ -308,9 +309,34 @@ export async function processWithdrawal(
 }
 
 /**
- * Handle Paystack webhook
+ * Verify Paystack webhook signature for security
+ * CRITICAL: Always verify webhook signatures to prevent fraud
  */
-export async function handlePaystackWebhook(event: any) {
+export function verifyPaystackSignature(payload: string, signature: string): boolean {
+  if (!PAYSTACK_SECRET_KEY) {
+    console.error('PAYSTACK_SECRET_KEY not configured');
+    return false;
+  }
+
+  const hash = crypto
+    .createHmac('sha512', PAYSTACK_SECRET_KEY)
+    .update(payload)
+    .digest('hex');
+
+  return hash === signature;
+}
+
+/**
+ * Handle Paystack webhook
+ * IMPORTANT: Always call verifyPaystackSignature first before using this function
+ */
+export async function handlePaystackWebhook(payload: string, signature: string) {
+  // SECURITY: Verify webhook signature
+  if (!verifyPaystackSignature(payload, signature)) {
+    throw new Error('Invalid webhook signature - potential fraud attempt');
+  }
+
+  const event = JSON.parse(payload);
   const { event: eventType, data } = event;
 
   switch (eventType) {

@@ -146,9 +146,10 @@ export async function retryRequest<T>(
       return await requestFn();
     } catch (error) {
       lastError = error;
+      const err = error as any;
 
       // Don't retry on client errors (4xx)
-      if (error.response && error.response.status >= 400 && error.response.status < 500) {
+      if (err.response && err.response.status >= 400 && err.response.status < 500) {
         throw error;
       }
 
