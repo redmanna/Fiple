@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '../store/authStore';
 
 // Auth Screens
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -138,8 +139,8 @@ function AuthStack() {
 
 // Main App Navigator
 export default function AppNavigator() {
-  // In production, check authentication state from Zustand store
-  const isAuthenticated = true; // Replace with: const { isAuthenticated } = useAuthStore();
+  // Get authentication state from Zustand store
+  const { isAuthenticated } = useAuthStore();
 
   return (
     <NavigationContainer>

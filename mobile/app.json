@@ -3,6 +3,8 @@
     "name": "Fiple",
     "slug": "fiple",
     "version": "1.0.0",
+    "description": "Fiple is Nigeria's premier campus social commerce platform connecting students through content creation, social networking, marketplace, skill exchange, and rewards. Join your campus hub, discover local businesses, and earn while you engage!",
+    "privacy": "https://fiple.app/privacy",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -24,7 +26,8 @@
         "NSCameraUsageDescription": "Fiple needs access to your camera to create posts and reels.",
         "NSPhotoLibraryUsageDescription": "Fiple needs access to your photos to share images and videos.",
         "NSMicrophoneUsageDescription": "Fiple needs access to your microphone to record audio for reels.",
-        "NSLocationWhenInUseUsageDescription": "Fiple uses your location to show local content and campus hubs."
+        "NSLocationWhenInUseUsageDescription": "Fiple uses your location to show local content and campus hubs.",
+        "NSUserNotificationUsageDescription": "Fiple sends you notifications for messages, rewards, new followers, and activity updates to keep you engaged with your campus community."
       }
     },
     "android": {
@@ -40,7 +43,8 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "POST_NOTIFICATIONS"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -66,7 +70,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "your-project-id-here"
+        "projectId": "YOUR_EAS_PROJECT_ID"
       }
     }
   }

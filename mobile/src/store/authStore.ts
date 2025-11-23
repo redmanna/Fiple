@@ -1,8 +1,15 @@
 // Authentication Store
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from '../api/services';
 import type { User, LoginRequest, RegisterRequest } from '../../../shared/types';
+import {
+  setSecureItem,
+  getSecureItem,
+  removeSecureItem,
+  setSecureObject,
+  getSecureObject,
+  STORAGE_KEYS,
+} from '../utils/secureStorage';
 
 interface AuthState {
   user: User | null;
@@ -28,8 +35,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const response = await authService.login(credentials);
 
-      await AsyncStorage.setItem('authToken', response.token);
-      await AsyncStorage.setItem('user', JSON.stringify(response.user));
+      await setSecureItem(STORAGE_KEYS.AUTH_TOKEN, response.token);
+      await setSecureObject(STORAGE_KEYS.USER, response.user);
 
       set({
         user: response.user,
@@ -47,8 +54,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const response = await authService.register(data);
 
-      await AsyncStorage.setItem('authToken', response.token);
-      await AsyncStorage.setItem('user', JSON.stringify(response.user));
+      await setSecureItem(STORAGE_KEYS.AUTH_TOKEN, response.token);
+      await setSecureObject(STORAGE_KEYS.USER, response.user);
 
       set({
         user: response.user,
@@ -63,8 +70,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await AsyncStorage.removeItem('authToken');
-    await AsyncStorage.removeItem('user');
+    await removeSecureItem(STORAGE_KEYS.AUTH_TOKEN);
+    await removeSecureItem(STORAGE_KEYS.USER);
 
     set({
       user: null,
@@ -76,16 +83,14 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   loadUser: async () => {
     try {
-      const token = await AsyncStorage.getItem('authToken');
-      const userStr = await AsyncStorage.getItem('user');
+      const token = await getSecureItem(STORAGE_KEYS.AUTH_TOKEN);
+      const user = await getSecureObject<User>(STORAGE_KEYS.USER);
 
-      if (token && userStr) {
-        const user = JSON.parse(userStr);
-
+      if (token && user) {
         // Refresh user data from server
         try {
           const freshUser = await authService.getMe();
-          await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+          await setSecureObject(STORAGE_KEYS.USER, freshUser);
 
           set({
             user: freshUser,
@@ -111,7 +116,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   updateUser: (user) => {
-    AsyncStorage.setItem('user', JSON.stringify(user));
+    setSecureObject(STORAGE_KEYS.USER, user);
     set({ user });
   },
 }));
